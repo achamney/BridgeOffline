@@ -1,0 +1,67 @@
+<html>
+<head>
+    <link type="text/css" href="style.css?ver=3" rel="stylesheet" />
+    <link rel="stylesheet" href="bootstrap.min.css" rel="stylesheet"/>
+    <title>BridgeOnline</title>
+</head>
+<body style="padding:0;margin:0">
+  <button class="btn btn-secondary floatRight" onclick="redeal(this)">Redeal</button>
+  &nbsp;&nbsp;&nbsp;
+  <button class="btn btn-primary floatRight" onclick="openContract(this)">See Contract</button>
+    <div id="main">
+        <div class="jumbotron">
+            <h1>Make New Game</h1>
+            Name: <input id="newName" />
+            <button class="btn btn-primary" onclick="addName()" id="addButton">Add</button>
+            <button class="btn btn-primary" onclick="addComputer()" id="addButton">Add Computer</button>
+            <button class="btn btn-primary" onclick="makeGameState()">Start Game</button>
+            <ul id="nameHolder">
+
+            </ul>
+            <br>
+            <br>
+            <br>
+            <h1>Join Existing Game</h1>
+            Name: <input id="myName" />
+            <button class="btn btn-primary" onclick="joinGame()" id="joinButton">Join Game</button>
+        </div>
+    </div>
+    <div id="playerButtons">
+        <button class="btn btn-primary" onclick="playCard(this)">Play</button><br>
+    </div>
+    <button class="btn btn-primary" style="display:none" id="aiRunButton" onclick="runAI(this)">Play AI</button><br>
+    <!-- The Modal -->
+    <div id="myModal" class="modal">
+
+        <!-- Modal content -->
+        <div class="modalContent">
+            <span class="close">&times;</span>
+            <div id="modaltext">
+
+            </div>
+
+        </div>
+
+    </div>
+    <div id="endModal" class="modal">
+
+        <!-- Modal content -->
+        <div class="modalContent">
+            <div id="endmodaltext">
+                <h1>End Game</h1>
+                Final Score:
+            </div>
+        </div>
+
+    </div>
+</body>
+
+<script src="jquery-3.4.1.min.js"></script>
+
+<script src="popper.min.js"></script>
+<script src="bootstrap.min.js"></script>
+<script src="markgen.js"></script>
+<script src="netcode.js?v=1"></script>
+<script src="game.js?v=1"></script>
+<script src="ai.js?v=1"></script>
+</html>
