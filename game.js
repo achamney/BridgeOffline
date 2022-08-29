@@ -34,7 +34,7 @@ function addName() {
     var newName = get('newName');
     if (newName.value.length == 0)
         return;
-    gamestate.players.push({ cards: [], name: newName.value });
+    gamestate.players.push({ cards: [], name: newName.value, tricks: 0 });
     get("nameHolder").innerHTML += `<li>${newName.value}</li>`;
     newName.value = "";
 }
@@ -42,7 +42,7 @@ function addComputer() {
     var newName = get('newName');
     if (newName.value.length == 0)
         return;
-    gamestate.players.push({ cards: [], name: newName.value, ai: true });
+    gamestate.players.push({ cards: [], name: newName.value, ai: true, tricks: 0 });
     get("nameHolder").innerHTML += `<li>${newName.value}</li>`;
     newName.value = "";
 }
@@ -73,7 +73,7 @@ function makeGameState() {
     gamestate.curPlayerName = myPlayer.name;
     var humanPlayerNum = gamestate.players.length;
     for(var i=0;i<4-humanPlayerNum;i++) {
-      gamestate.players.push({ cards: [], name: "AI"+(i+1), ai: true });
+      gamestate.players.push({ cards: [], name: "AI"+(i+1), ai: true, tricks: 0 });
     }
     var numCardsToDraw = 13;
     for (var player of gamestate.players) {
@@ -302,7 +302,8 @@ function playThisCard(card,gsPlayer) {
       gamestate.curPlayerName = gamestate.players[winningPlayer].name;
       gamestate.roundPlayerStart = getPlayerIndByName(gamestate.curPlayerName);
       gamestate.center = {};
-      gamestate.log.push(`${gamestate.curPlayerName} wins the trick`);
+      var teamPoints = gamestate.players[winningPlayer].tricks + gamestate.players[getOppositePlayerIdByName(gamestate.curPlayerName)].tricks;
+      gamestate.log.push(`${gamestate.curPlayerName} wins the trick. TP (${teamPoints})`);
     } else {
       advanceTurn();
     }
