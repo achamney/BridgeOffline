@@ -6,7 +6,7 @@ window.setInterval(()=>{
   //netService.getGameState();
 },5000);
 function JsonBoxyService() {
-    var MASTERURL = "http://192.168.21.202:5000/";
+    var MASTERURL = "http://achamney.pythonanywhere.com/";
     var mainGame = "";
     this.setGameState = function (gamestate, callback) {
         $.ajax({
