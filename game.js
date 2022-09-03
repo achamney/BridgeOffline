@@ -81,7 +81,7 @@ function makeGameState() {
         var card = gamestate.deck.pop();
         player.cards.push(card);
       }
-      player.cards.sort((a, b)=>(a.suit*13+a.value)-(b.suit*13+b.value));
+      player.cards.sort((a, b)=>(b.suit*13+b.value)-(a.suit*13+a.value));
     }
     netService.setGameState(gamestate);
     drawGameState();
@@ -89,18 +89,21 @@ function makeGameState() {
     watchGameState();
 }
 function watchGameState() {
-    window.setInterval(async function () {
+    window.watchInterval = window.watchInterval || window.setInterval(async function () {
       var curPlayer = gamestate.players.filter(p => p.name == gamestate.curPlayerName)[0];
-        if (gamestate.curPlayerName != myPlayer.name) {
-            if(curPlayer.ai && gamestate.players[0].name==myPlayer.name){
-              //runAI();
-            } else {
-              window.gamestate = await netService.getGameState();
-              window.gamestate = JSON.parse(window.gamestate);
-              drawGameState();
-            }
+      if (gamestate.players[0].name == myPlayer.name && curPlayer.ai) {
+        runAI();
+      }
+      if (gamestate.curPlayerName != myPlayer.name) {
+          if(curPlayer.ai && gamestate.players[0].name==myPlayer.name){
+            //runAI();
+          } else {
+            window.gamestate = await netService.getGameState();
+            window.gamestate = JSON.parse(window.gamestate);
+            drawGameState();
+          }
 
-        }
+      }
     }, 2000);
 }
 function drawGameState() {
@@ -298,6 +301,7 @@ function playThisCard(card,gsPlayer) {
       }
     }, gamestate.roundPlayerStart)
     if (allplayed == 4) {
+      foreachCenter((plind,i)=>gamestate.discards.push(gamestate.center[i]));
       gamestate.players[winningPlayer].tricks++;
       gamestate.curPlayerName = gamestate.players[winningPlayer].name;
       gamestate.roundPlayerStart = getPlayerIndByName(gamestate.curPlayerName);
@@ -321,7 +325,9 @@ function foreachCenter(fn, order) {
   var centers=[];
   var start = order | 0;
   for(var playerInd in gamestate.center) {
-    centers.push(start);
+    if (gamestate.center[start]) {
+      centers.push(start);
+    }
     start = getNextPlayerInd(gamestate.players[start].name);
   }
   centers.forEach(fn)
@@ -393,6 +399,7 @@ function redeal() {
     p.tricks = 0;
     delete p.board;
   });
+  gamestate.discards = [];
   gamestate.playStage=0;
   gamestate.contract = [];
   gamestate.center = {};
