@@ -23,33 +23,47 @@ function playCardAI(gsPlayer) {
     if (trumpCards.length > 0){
       playThisCard(trumpCards[0], gsPlayer);
     } else {
-      playHighLowValueCard(gsPlayer);
+      playHighLowValueCard(gsPlayer, gsPlayer.cards);
     }
   } else {
     var followSuitCards = gsPlayer.cards.filter(c=>c.suit == leadingSuit.suit);
     var partnersCard = gamestate.center[oppoId];
-    var playLow = false;
-    if (partnersCard && cardIsWinning(oppoId)) {
-      playLow = true;
+    var centerCards = centerCardsToArray();
+    var validCards = followSuitCards.length > 0 ? followSuitCards : gsPlayer.cards;
+    if (partnersCard && centerCardIsWinning(oppoId)) {
+      console.log("Partner's winning, play lowest");
+      playHighLowValueCard(gsPlayer, validCards, true);
+      return;
     }
-    if (followSuitCards.length > 0) {
-      playThisCard(followSuitCards[playLow ? followSuitCards.length-1 : 0], gsPlayer);
-    } else if (trumpCards.length > 0) {
-      playThisCard(trumpCards[playLow ? trumpCards.length-1 : 0], gsPlayer);
+    var winningCards = validCards.filter(c=>cardIsWinning(centerCards,c));
+    if (centerCards.length == 3) {
+      console.log("I'm last!");
+      playHighLowValueCard(gsPlayer, winningCards, true);
     } else {
-      playHighLowValueCard(gsPlayer, playLow);
+      console.log("Try to win!");
+      playHighLowValueCard(gsPlayer, winningCards, false);
     }
   }
 }
-function cardIsWinning(cardId) {
+function centerCardsToArray() {
+    var cards = [];
+    foreachCenter((cnHandler)=>{
+      cards.push(cnHandler.card);
+    });
+    return cards;
+}
+function centerCardIsWinning(cardId) {
+  return cardIsWinning(centerCardsToArray(), gamestate.center[cardId]);
+}
+function cardIsWinning(cards, thisCard) {
   var isHighest = true;
-  var thisCard = gamestate.center[cardId];
   var trumpSuit = gamestate.activeContract.suit;
-  foreachCenter((ocardId)=>{
-    var otherCard = gamestate.center[ocardId];
+  cards.forEach((otherCard)=>{
     if (otherCard.suit == trumpSuit && thisCard.suit != trumpSuit) {
       isHighest = false;
     } else if (otherCard.suit == thisCard.suit && otherCard.value > thisCard.value) {
+      isHighest = false;
+    } else if (otherCard.suit != thisCard.suit && thisCard.suit != trumpSuit){
       isHighest = false;
     }
   })
@@ -101,12 +115,21 @@ function bidAI(gsPlayer) {
     passAndAdvanceTurn();
   }
 }
-function playHighLowValueCard(gsPlayer, playLow) {
-  var card = gsPlayer.cards[0];
-  gsPlayer.cards.forEach(c=>{
+function playHighLowValueCard(gsPlayer, cards, playLow) {
+  if (cards.length == 0) {
+    var leadingSuit = gamestate.center[gamestate.roundPlayerStart];
+    var followSuitCards = gsPlayer.cards.filter(c=>c.suit == leadingSuit.suit);
+    cards = followSuitCards.length > 0 ? followSuitCards : gsPlayer.cards;
+    playLow = true;
+    console.log("no winning cards :(");
+  }
+  var card = cards[cards.length-1];
+  cards.forEach(c=>{
     if (c.value > card.value && !playLow) {
+      console.log("This card's better: " + c.suit + " " + c.value);
       card = c;
     } else if (c.value < card.value && playLow) {
+      console.log("This card's worse: " + c.suit + " " + c.value);
       card = c;
     }
   });

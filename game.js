@@ -284,24 +284,24 @@ function playThisCard(card,gsPlayer) {
     var allplayed = 0,
       winningCard,
       winningPlayer;
-    foreachCenter((plind,i)=>{
-      var card = gamestate.center[plind];
+    foreachCenter((cnHandler,i)=>{
+      var card = cnHandler.card;
       if (!card) {
         return;
       }
       allplayed++;
       if (!winningCard) {
         winningCard = card;
-        winningPlayer = plind;
+        winningPlayer = cnHandler.ind;
       } else {
         if (betterSuit(card, winningCard) || (winningCard.suit == card.suit && card.value>winningCard.value)) {
           winningCard = card;
-          winningPlayer = plind;
+          winningPlayer = cnHandler.ind;
         }
       }
     }, gamestate.roundPlayerStart)
     if (allplayed == 4) {
-      foreachCenter((plind,i)=>gamestate.discards.push(gamestate.center[i]));
+      foreachCenter((cnHandler,i)=>gamestate.discards.push(cnHandler.card));
       gamestate.players[winningPlayer].tricks++;
       gamestate.curPlayerName = gamestate.players[winningPlayer].name;
       gamestate.roundPlayerStart = getPlayerIndByName(gamestate.curPlayerName);
@@ -324,11 +324,13 @@ function betterSuit(newCard, winningCard) {
 function foreachCenter(fn, order) {
   var centers=[];
   var start = order | 0;
-  for(var playerInd in gamestate.center) {
-    if (gamestate.center[start]) {
-      centers.push(start);
+  for(var i=0;i<4;i++) {
+    var thisCard = gamestate.center[start];
+    if (thisCard) {
+      centers.push({card:thisCard,ind:start});
     }
-    start = getNextPlayerInd(gamestate.players[start].name);
+    start ++;
+    start = start % 4;
   }
   centers.forEach(fn)
 }
