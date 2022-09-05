@@ -13,6 +13,9 @@
     text-shadow: 1px 1px #333;
     box-shadow: 3px 1px 2px #444;
 }
+.suit {
+  width: 16px;
+}
 .centerboard {
     border: 1px solid black;
 }

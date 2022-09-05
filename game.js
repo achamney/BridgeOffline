@@ -9,7 +9,7 @@ var gamestate = {
     contract: [],
     playStage:0
 }, myPlayer;
-var suitToIcon={1:"&clubs;",0:"&diamond;",2:"&hearts;", 3:"&spades;", 4:"NT"};
+var suitToIcon={1:"<img src='clubs.png' class='suit'/>",0:"<img src='diamonds.png' class='suit'/>",2:"<img src='hearts.png' class='suit'/>", 3:"<img src='spades.png' class='suit'/>", 4:"NT"};
 var suitToColor={1:"black",0:"red",2:"red", 3:"black"};
 var valueToCardNum={2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,10:10,11:"J",12:"Q",13:"K",14:"A"};
 
@@ -109,10 +109,10 @@ function watchGameState() {
 function drawGameState() {
     var main = get("main");
     var curPlayerId = getPlayerIndByName(gamestate.curPlayerName);
-    get("playerButtons").style['display']=
-      (gamestate.curPlayerName==myPlayer.name ||
-        (gamestate.players[curPlayerId].board && gamestate.players[getOppositePlayerIdByName(gamestate.curPlayerName)].name == myPlayer.name))
-      &&gamestate.playStage==1?"block":"none";
+    var canPlayCards = (gamestate.curPlayerName==myPlayer.name ||
+      (gamestate.players[curPlayerId].board && gamestate.players[getOppositePlayerIdByName(gamestate.curPlayerName)].name == myPlayer.name))
+      && gamestate.playStage==1;
+    get("playerButtons").style['display']=canPlayCards?"block":"none";
     get("aiRunButton").style['display']=gamestate.players[0].name==myPlayer.name?"block":"none";
     main.innerHTML = "";
 
@@ -139,10 +139,15 @@ function drawGameState() {
         for (var j = 0; j < player.cards.length; j++) {
             var pcard = player.cards[j];
             var pcarddom = makeCard(pcard, playerBoard,j*30, 0, player.name == myPlayer.name || player.board);
+            if (canPlayCards && (player.name == myPlayer.name || player.board)) {
+              pcarddom.style['background-color'] = validCard(pcard, player.cards)? "white" : "#AAA";
+            }
             pcarddom.card = pcard;
             if (player.name == myPlayer.name || player.board) {
                 myPlayer.cardDoms.push(pcarddom);
-                pcarddom.onclick = clickPlayerCard;
+                if (validCard(pcard, player.cards)) {
+                  pcarddom.onclick = clickPlayerCard;
+                }
             }
         }
         var centerOffset = [{l:0,t:50},{l:-100,t:0},{l:0,t:-50},{l:100,t:0}];
@@ -163,6 +168,14 @@ function drawGameState() {
     if (gamestate.playStage == 0) {
       drawContract(main);
     }
+}
+function validCard(card, otherCards) {
+  var isValid = true;
+  var leadingSuit = gamestate.center[gamestate.roundPlayerStart];
+  if (!leadingSuit)
+    return true;
+  var followSuitCards = otherCards.filter(c=>c.suit == leadingSuit.suit);
+  return followSuitCards.length == 0 ? true : card.suit == leadingSuit.suit;
 }
 function drawContract(main) {
   drawContractState(main);
