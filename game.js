@@ -7,11 +7,13 @@ var gamestate = {
     log: [],
     curPlayerName: "",
     contract: [],
-    playStage:0
+    playStage:0,
+    firstBid:0
 }, myPlayer;
 var suitToIcon={1:"<img src='clubs.png' class='suit'/>",0:"<img src='diamonds.png' class='suit'/>",2:"<img src='hearts.png' class='suit'/>", 3:"<img src='spades.png' class='suit'/>", 4:"NT"};
 var suitToColor={1:"black",0:"red",2:"red", 3:"black"};
 var valueToCardNum={2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,10:10,11:"J",12:"Q",13:"K",14:"A"};
+var suitToPoints={1:20,0:20,2:30,3:30,4:30};
 
 window.onload = function () {
     $("#newName").keyup(function (event) {
@@ -70,11 +72,11 @@ function makeGameState() {
         gamestate.deck.sort((a, b) => { return Math.random() * 3 - 1; });
     }
     myPlayer = clone(gamestate.players[0]);
-    gamestate.curPlayerName = myPlayer.name;
     var humanPlayerNum = gamestate.players.length;
     for(var i=0;i<4-humanPlayerNum;i++) {
       gamestate.players.push({ cards: [], name: "AI"+(i+1), ai: true, tricks: 0 });
     }
+    gamestate.curPlayerName = gamestate.players[gamestate.firstBid].name;
     var numCardsToDraw = 13;
     for (var player of gamestate.players) {
       for (var i = 0; i < numCardsToDraw; i++) {
@@ -94,7 +96,7 @@ function watchGameState() {
       if (gamestate.players[0].name == myPlayer.name && curPlayer.ai) {
         runAI();
       }
-      if (gamestate.curPlayerName != myPlayer.name) {
+      if (gamestate.curPlayerName != myPlayer.name && (!curPlayer.board || curPlayer.ai)) {
           if(curPlayer.ai && gamestate.players[0].name==myPlayer.name){
             //runAI();
           } else {
@@ -102,8 +104,8 @@ function watchGameState() {
             window.gamestate = JSON.parse(window.gamestate);
             drawGameState();
           }
-
       }
+      isEndGame();
     }, 2000);
 }
 function drawGameState() {
@@ -196,6 +198,7 @@ function drawContract(main) {
   }
   var dbl = makeContractButton(contractButtons,10,10);
   dbl.innerHTML = "DBL";
+  dbl.onclick = doubleAndAdvanceTurn;
 
 }
 function drawContractState(main) {
@@ -203,9 +206,53 @@ function drawContractState(main) {
   gamestate.players.forEach((p,i)=>{
     makesq("span", contractState, "playerName", i*120).innerHTML = p.name;
   });
+  var xPos = gamestate.firstBid;
   gamestate.contract.forEach((c, i) => {
-    makesq("span", contractState, "block bid", (i%4)*120,30+30*Math.floor((i+1)/4)).innerHTML = c.text;
+    makesq("span", contractState, "block bid", (xPos%4)*120,30+30*Math.floor((xPos)/4)).innerHTML = c.text;
+    xPos++;
   });
+}
+function isEndGame(){
+  var cards = [];
+  gamestate.players.forEach(p=>cards = cards.concat(p.cards));
+  if (cards.length == 0) {
+    var teamPoints = getTeamPointsByPlayerId(gamestate.activeContract.player);
+    var pointsToWin = gamestate.activeContract.val + 7;
+    var gamePoints = (isGameContract() && teamPoints>=pointsToWin)?300:0;
+    if (teamPoints >= pointsToWin) {
+      gamePoints += suitToPoints[gamestate.activeContract.suit]*(teamPoints-6)*(hasDouble()?2:1);
+    } else {
+      gamePoints += 50*(teamPoints-pointsToWin)*(hasDouble()?2:1);
+    }
+    get("endModal").style.display = "block";
+    get("endmodalsummary").innerHTML =`Contract: ${gamestate.activeContract.text}<br/>
+      Was contract successful: ${teamPoints>=pointsToWin?"Yes" : "No"}<br/>
+      Points awarded to ${gamestate.activeContract.name}: ${gamePoints}`;
+    return true;
+  } else {
+    get("endModal").style.display = "none";
+    return false;
+  }
+}
+function hasDouble() {
+  var hasDouble = false;
+  gamestate.contract.forEach(c=>{
+    if (c.double) {
+      hasDouble = true;
+    }
+  });
+  return hasDouble;
+}
+function isGameContract() {
+  if (gamestate.activeContract.suit <=1) {
+    return gamestate.activeContract.val >=4;
+  }
+  else if (gamestate.activeContract.suit <=3) {
+    return gamestate.activeContract.val >=3;
+  }
+  else if (gamestate.activeContract.suit ==4) {
+    return gamestate.activeContract.val >=2;
+  }
 }
 function makeContractButton(contractButtons,i,j) {
   var btn = make("button", contractButtons,"btn btn-secondary");
@@ -225,7 +272,10 @@ function makeContractButton(contractButtons,i,j) {
   }
   return btn;
 }
-function contractIsAvailable(suit, val) {
+function contractIsAvailable(suit, val, double) {
+  if (double) {
+    return true;
+  }
   for (var c of gamestate.contract) {
     if(c.pass) continue;
     if (val < c.val) {
@@ -277,7 +327,9 @@ function clickPlayerCard() {
 function openContract() {
     var modal = get("myModal");
     modal.style.display = "block";
-    drawContractState(get("modaltext"));
+    var contractModal = get("modaltext");
+    contractModal.innerHTML = "";
+    drawContractState(contractModal);
 }
 function playCard() {
     var carddom = $(".board"+gamestate.curPlayerName+" .playcard.selected")[0];
@@ -319,14 +371,19 @@ function playThisCard(card,gsPlayer) {
       gamestate.curPlayerName = gamestate.players[winningPlayer].name;
       gamestate.roundPlayerStart = getPlayerIndByName(gamestate.curPlayerName);
       gamestate.center = {};
-      var teamPoints = gamestate.players[winningPlayer].tricks + gamestate.players[getOppositePlayerIdByName(gamestate.curPlayerName)].tricks;
+      var teamPoints = getTeamPointsByPlayerId(winningPlayer);
       gamestate.log.push(`${gamestate.curPlayerName} wins the trick. TP (${teamPoints})`);
+      isEndGame();
     } else {
       advanceTurn();
     }
     netService.setGameState(gamestate);
     drawGameState();
   },1);
+}
+function getTeamPointsByPlayerId(plid) {
+  var plidname = gamestate.players[plid].name;
+  return gamestate.players[plid].tricks + gamestate.players[getOppositePlayerIdByName(plidname)].tricks;
 }
 function betterSuit(newCard, winningCard) {
   if (newCard.suit != winningCard.suit && gamestate.activeContract.suit == newCard.suit){
@@ -350,6 +407,15 @@ function foreachCenter(fn, order) {
 function bidAndAdvanceTurn() {
     gamestate.log.push(`${gamestate.curPlayerName} Bid ${bid.text}`);
     gamestate.contract.push(bid);
+    window.setTimeout(function(){
+      advanceTurn();
+      netService.setGameState(gamestate);
+      drawGameState();
+    },1);
+}
+function doubleAndAdvanceTurn() {
+    gamestate.log.push(`${gamestate.curPlayerName} Doubled`);
+    gamestate.contract.push({name: gamestate.curPlayerName, double: true, text: "Double"});
     window.setTimeout(function(){
       advanceTurn();
       netService.setGameState(gamestate);
@@ -418,15 +484,8 @@ function redeal() {
   gamestate.playStage=0;
   gamestate.contract = [];
   gamestate.center = {};
+  gamestate.firstBid = (gamestate.firstBid + 1)%4;
   makeGameState();
-}
-function endGame() {
-    get("endModal").style.display = "block";
-    var score = 0;
-    for (var key in gamestate.center) {
-        score += gamestate.center[key].length;
-    }
-    get("endmodaltext").innerHTML += score;
 }
 function makeCard(card, parent, left, top, visible) {
     var carddom = make("div", parent, "block playcard");
@@ -491,3 +550,4 @@ window.setupModal = function (id) {
     });
 }
 setupModal("myModal");
+setupModal("endModal");
