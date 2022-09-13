@@ -1,3 +1,6 @@
+var HEARTS = 2, SPADES = 3, DIAMONDS=0, CLUBS = 1, NOTRUMP=4;
+var suitToGamePoints = {0: 28, 1: 28, 2: 25, 3: 25, 4: 25};
+var suitToGameBid = {0: 4, 1: 4, 2: 3, 3: 3, 4: 2};
 function runAI() {
   var gsPlayer = gamestate.players.filter(p => p.name == gamestate.curPlayerName)[0];
   if (gsPlayer.cards.length < gamestate.players[0].cards.length || isEndGame()) {
@@ -13,6 +16,10 @@ function runAI() {
 function playCardAI(gsPlayer) {
   var leadingSuit = gamestate.center[gamestate.roundPlayerStart];
   var trumpCards = gsPlayer.cards.filter(c=>c.suit == trumpSuit);
+  var boardPlayer = gamestate.players.filter(p=>p.board)[0];
+  var boardId = gamestate.players.indexOf(boardPlayer)
+  var partner = gamestate.players[getOppositePlayerIdByName(gamestate.curPlayerName)];
+  var boardCards = boardPlayer.name != gamestate.curPlayerName && boardPlayer.name != partner.name && !gamestate.center[boardId]? boardPlayer.cards : [];
   var oppoId = getOppositePlayerIdByName(gsPlayer.name);
   if (gsPlayer.board) {
     if (!gamestate.players[oppoId].ai)
@@ -20,10 +27,10 @@ function playCardAI(gsPlayer) {
   }
   if (!leadingSuit) {
     var trumpSuit = gamestate.activeContract.suit;
-    if (trumpCards.length > 0){
-      playThisCard(trumpCards[0], gsPlayer);
+    if (trumpCards.length > 0) {
+      playHighLowValueCard(gsPlayer, trumpCards, boardCards);
     } else {
-      playHighLowValueCard(gsPlayer, gsPlayer.cards);
+      playHighLowValueCard(gsPlayer, gsPlayer.cards, boardCards);
     }
   } else {
     var followSuitCards = gsPlayer.cards.filter(c=>c.suit == leadingSuit.suit);
@@ -32,16 +39,16 @@ function playCardAI(gsPlayer) {
     var validCards = followSuitCards.length > 0 ? followSuitCards : gsPlayer.cards;
     if (partnersCard && centerCardIsWinning(oppoId)) {
       console.log("Partner's winning, play lowest");
-      playHighLowValueCard(gsPlayer, validCards, true);
+      playHighLowValueCard(gsPlayer, validCards, boardCards, true);
       return;
     }
-    var winningCards = validCards.filter(c=>cardIsWinning(centerCards,c));
+    var winningCards = validCards.filter(c=>cardIsWinning(centerCards,c, true));
     if (centerCards.length == 3) {
       console.log("I'm last!");
-      playHighLowValueCard(gsPlayer, winningCards, true);
+      playHighLowValueCard(gsPlayer, winningCards, boardCards, true);
     } else {
       console.log("Try to win!");
-      playHighLowValueCard(gsPlayer, winningCards, false);
+      playHighLowValueCard(gsPlayer, winningCards, boardCards, false);
     }
   }
 }
@@ -55,7 +62,7 @@ function centerCardsToArray() {
 function centerCardIsWinning(cardId) {
   return cardIsWinning(centerCardsToArray(), gamestate.center[cardId]);
 }
-function cardIsWinning(cards, thisCard) {
+function cardIsWinning(cards, thisCard, isCenterCard) {
   var isHighest = true;
   var trumpSuit = gamestate.activeContract.suit;
   cards.forEach((otherCard)=>{
@@ -63,7 +70,7 @@ function cardIsWinning(cards, thisCard) {
       isHighest = false;
     } else if (otherCard.suit == thisCard.suit && otherCard.value > thisCard.value) {
       isHighest = false;
-    } else if (otherCard.suit != thisCard.suit && thisCard.suit != trumpSuit){
+    } else if (otherCard.suit != thisCard.suit && thisCard.suit != trumpSuit && (otherCard.suit == trumpSuit || isCenterCard)){
       isHighest = false;
     }
   })
@@ -71,28 +78,28 @@ function cardIsWinning(cards, thisCard) {
 }
 function bidAI(gsPlayer) {
   var score = getScore(gsPlayer.cards);
-  var diamonds = gsPlayer.cards.filter(c=>c.suit==0);
-  var clubs = gsPlayer.cards.filter(c=>c.suit==1);
-  var hearts = gsPlayer.cards.filter(c=>c.suit==2);
-  var spades = gsPlayer.cards.filter(c=>c.suit==3);
+  var diamonds = gsPlayer.cards.filter(c=>c.suit==DIAMONDS);
+  var clubs = gsPlayer.cards.filter(c=>c.suit==CLUBS);
+  var hearts = gsPlayer.cards.filter(c=>c.suit==HEARTS);
+  var spades = gsPlayer.cards.filter(c=>c.suit==SPADES);
   var derefSuitSize = {0:diamonds.length,1:clubs.length,2:hearts.length,3:spades.length};
   var myLastBid = getNthLatestBid(4);
   var partnerBid = getNthLatestBid(2);
   var opponentBid = getNthLatestBid(1);
   var double = false;
-  if (score > 8 && !partnerBid) {
+  if (score >= 8 && !partnerBid) {
     var suit = -1;
     var bidnum = score < 12 ? 1 : 0;
     if (spades.length >= 5)
-      suit = 3;
+      suit = SPADES;
     else if (hearts.length >= 5)
-      suit = 2;
+      suit = HEARTS;
     else if (diamonds.length >= 6)
-      suit = 0;
+      suit = DIAMONDS;
     else if (clubs.length >= 6 && bidnum == 0)
-      suit = 1;
+      suit = CLUBS;
     else
-      suit = 4;
+      suit = NOTRUMP;
     if (opponentBid && derefSuitSize[opponentBid.suit] <=2 && lowestLengthSuitExcept(opponentBid.suit, derefSuitSize)>=3) { // takeout double
       double = true;
       window.bid = {suit: -1, val: -1, dbl: true, player: getPlayerIndByName(gamestate.curPlayerName),
@@ -102,30 +109,37 @@ function bidAI(gsPlayer) {
       window.bid = {suit: suit, val: bidnum, dbl: false, player: getPlayerIndByName(gamestate.curPlayerName),
         text: suitToIcon[suit]+(bidnum+1), name: gamestate.curPlayerName};
     }
-    if (!contractIsAvailable(suit, bidnum, double) || (bidnum == 1 && suit == 4))
+    if (!contractIsAvailable(suit, bidnum, double) || (bidnum == 1 && suit == NOTRUMP))
       passAndAdvanceTurn();
     else
       bidAndAdvanceTurn();
   }
-  else if (partnerBid && partnerBid.suit == 4 && partnerBid.val== 0) { // Jacoby Transfer
-      signalJacobyTransfer(spades, hearts);
+  else if (partnerBid && partnerBid.suit == NOTRUMP && partnerBid.val== 0) { // Jacoby Transfer
+      signalJacobyTransfer(score, spades, hearts);
   }
-  else if (partnerBid && (partnerBid.suit == 0 || partnerBid.suit == 2) && partnerBid.val == 1 &&
-          myLastBid && myLastBid.val == 0 && myLastBid.suit == 4) { // Jacoby Transfer response
-      completeJacobyTransfer(partnerBid);
+  else if (partnerBid && partnerBid.suit <= HEARTS && partnerBid.val == 1 &&
+          myLastBid && myLastBid.val == 0 && myLastBid.suit == NOTRUMP) { // Jacoby Transfer response
+      if (partnerBid.suit == CLUBS) {
+        staymanStepTwo(gsPlayer, derefSuitSize)
+      } else {
+        completeJacobyTransfer(partnerBid);
+      }
   }
-  else if (partnerBid && partnerBid.double && gamestate.contract.length <=3) { // Takeout double response
+  else if (partnerBid && partnerBid.dbl && gamestate.contract.length <=6) { // Takeout double response
       completeTakeoutDouble(derefSuitSize, clubs,diamonds,hearts,spades);
   }
   else if (score > 5 && partnerBid) {
-    var suit = partnerBid.suit;
-    var bidnum = partnerBid.val+1;
-    window.bid = {suit: suit, val: bidnum, dbl: false, player: getPlayerIndByName(gamestate.curPlayerName),
+    var suit = partnerBid.suit,
+      bidnum = partnerBid.val+(bidnum <= 1 && derefSuitSize[suit] >=4 ? 1 : 0),
+      myId = getPlayerIndByName(gamestate.curPlayerName),
+      partnerId = getOppositePlayerIdByName(gamestate.curPlayerName);
+    if (potentialGame(myId, partnerId, partnerBid)) {
+      bidnum = suitToGameBid[suit];
+    }
+    window.bid = {suit: suit, val: bidnum, dbl: false, player: myId,
       text: suitToIcon[suit]+(bidnum+1), name: gamestate.curPlayerName};
 
-
-    if (contractIsAvailable(suit, bidnum) && ((bidnum == 1 && derefSuitSize[suit] >=4) ||
-        (bidnum == 2 && derefSuitSize[suit] >=4 && score >= 8)))
+    if (contractIsAvailable(suit, bidnum))
       bidAndAdvanceTurn();
     else
       passAndAdvanceTurn();
@@ -134,6 +148,38 @@ function bidAI(gsPlayer) {
     passAndAdvanceTurn();
   }
 }
+function potentialGame(myId, partnerId, partnerBid) {
+  var score = getScore(gamestate.players[myId].cards) + guessPartnerScore(myId, partnerId);
+  if (score > suitToGamePoints[partnerBid.suit]) {
+    return true;
+  }
+  return false;
+}
+function guessPartnerScore(myId, partnerId) {
+  var score = 0;
+  var iBidNoTrump = false;
+  gamestate.contract.forEach((c,i)=> {
+    if (c.player == partnerId) {
+        if (c.val == 0 && c.suit < NOTRUMP) {
+          score = 13;
+        } else if (c.val == 0 && c.suit == NOTRUMP) {
+          score = 15;
+        } else if (c.val == 1) {
+          if (iBidNoTrump && (c.suit == HEARTS || c.suit == DIAMONDS)) {
+            return; // jacoby transfer doesn't assume points
+          } else if ( i<=3 && c.suit == CLUBS) {
+            score = 22; // Opening of two clubs
+          }
+          score = Math.max(score, 8);
+        }
+    } else if (c.player == myId) {
+      if (c.suit == NOTRUMP) {
+        iBidNoTrump = true;
+      }
+    }
+  });
+  return score;
+}
 function getScore(cards) {
   var score = 0;
   cards.forEach(c=>score+=Math.max(0,c.value-10));
@@ -141,6 +187,25 @@ function getScore(cards) {
 }
 function completeJacobyTransfer(partnerBid) {
   var suit = partnerBid.suit == 0 ? 2 : 3;
+  window.bid = {suit: suit, val: 1, dbl: false, player: getPlayerIndByName(gamestate.curPlayerName),
+    text: suitToIcon[suit]+2, name: gamestate.curPlayerName};
+  if (contractIsAvailable(suit, 1)){
+    bidAndAdvanceTurn();
+  } else {
+    passAndAdvanceTurn();
+  }
+}
+function staymanStepTwo(gsPlayer, derefSuitSize) {
+  var suit = -1;
+  if (derefSuitSize[HEARTS]>=4) {
+    suit = HEARTS;
+  }
+  else if (derefSuitSize[SPADES]>=4) {
+    suit = SPADES;
+  }
+  else if (derefSuitSize[SPADES]>=4) {
+    suit = DIAMONDS;
+  }
   window.bid = {suit: suit, val: 1, dbl: false, player: getPlayerIndByName(gamestate.curPlayerName),
     text: suitToIcon[suit]+2, name: gamestate.curPlayerName};
   if (contractIsAvailable(suit, 1)){
@@ -171,16 +236,16 @@ function completeTakeoutDouble(derefSuitSize,clubs,diamonds,hearts,spades) {
     passAndAdvanceTurn();
   }
 }
-function signalJacobyTransfer(spades, hearts) {
+function signalJacobyTransfer(score, spades, hearts) {
   var suit = -1;
-  var transfer = false;
   if (spades.length >= 5) {
     suit = 2;
-    transfer = true;
   }
   else if (hearts.length >= 5) {
     suit = 0;
-    transfer = true;
+  }
+  else if ((hearts.length == 4 || spades.length == 4) && score >= 8) { //stayman
+    suit = 1;
   }
   else if (score >= 8) { // no transfer available, signal strong hand
     suit = 4;
@@ -189,7 +254,7 @@ function signalJacobyTransfer(spades, hearts) {
     return;
   }
   window.bid = {suit: suit, val: 1, dbl: false, player: getPlayerIndByName(gamestate.curPlayerName),
-    text: suitToIcon[suit]+2, name: gamestate.curPlayerName, transfer: transfer};
+    text: suitToIcon[suit]+2, name: gamestate.curPlayerName};
   if (contractIsAvailable(suit, 1)){
     bidAndAdvanceTurn();
   } else {
@@ -205,10 +270,10 @@ function lowestLengthSuitExcept(suit, derefSuitSize) {
   }
   return lowest;
 }
-function playHighLowValueCard(gsPlayer, cards, playLow) {
+function playHighLowValueCard(gsPlayer, cards, boardCards, playLow) {
   if (cards.length == 0) {
     var leadingSuit = gamestate.center[gamestate.roundPlayerStart];
-    var followSuitCards = gsPlayer.cards.filter(c=>c.suit == leadingSuit.suit);
+    var followSuitCards = leadingSuit ? gsPlayer.cards.filter(c=>c.suit == leadingSuit.suit) : [];
     cards = followSuitCards.length > 0 ? followSuitCards : gsPlayer.cards;
     playLow = true;
     console.log("no winning cards :(");
@@ -223,6 +288,13 @@ function playHighLowValueCard(gsPlayer, cards, playLow) {
       card = c;
     }
   });
+  var boardFollowSuit = boardCards.filter(c=>c.suit == card.suit);
+  boardCards = boardFollowSuit.length > 0 ? boardFollowSuit : boardCards; // Board is void vs not void
+  if (!cardIsWinning(boardCards, card) && !playLow) {
+    console.log("Found card that could win, but the board will beat me: " + card.suit + " " + card.value);
+    var tryDifferentCards = cards.filter(c=>c!=card);
+    return playHighLowValueCard(gsPlayer, tryDifferentCards, boardCards, tryDifferentCards.length >0);
+  }
   playThisCard(card, gsPlayer);
 }
 function getNthLatestBid(nth) {

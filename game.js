@@ -5,6 +5,7 @@ var gamestate = {
     discards: [],
     players: [],
     log: [],
+    boardIsVisible: false,
     curPlayerName: "",
     contract: [],
     playStage:0,
@@ -140,7 +141,7 @@ function drawGameState() {
 
         for (var j = 0; j < player.cards.length; j++) {
             var pcard = player.cards[j];
-            var pcarddom = makeCard(pcard, playerBoard,j*30, 0, player.name == myPlayer.name || player.board);
+            var pcarddom = makeCard(pcard, playerBoard,j*30, 0, player.name == myPlayer.name || (player.board && gamestate.boardIsVisible));
             if (canPlayCards && (player.name == myPlayer.name || player.board)) {
               pcarddom.style['background-color'] = validCard(pcard, player.cards)? "white" : "#AAA";
             }
@@ -237,7 +238,7 @@ function isEndGame(){
 function hasDouble() {
   var hasDouble = false;
   gamestate.contract.forEach(c=>{
-    if (c.double) {
+    if (c.dbl) {
       hasDouble = true;
     }
   });
@@ -342,6 +343,7 @@ function playCard() {
 function playThisCard(card,gsPlayer) {
   var playerInd = gamestate.players.indexOf(gsPlayer);
   gsPlayer.cards.splice(gsPlayer.cards.indexOf(card), 1);
+  gamestate.boardIsVisible=true;
   gamestate.center[playerInd] = card;
   gamestate.log.push(`${gamestate.curPlayerName} plays ${suitToIcon[card.suit]}${valueToCardNum[card.value]}`);
 
@@ -415,7 +417,7 @@ function bidAndAdvanceTurn() {
 }
 function doubleAndAdvanceTurn() {
     gamestate.log.push(`${gamestate.curPlayerName} Doubled`);
-    gamestate.contract.push({name: gamestate.curPlayerName, double: true, text: "Double"});
+    gamestate.contract.push({name: gamestate.curPlayerName, dbl: true, text: "Double"});
     window.setTimeout(function(){
       advanceTurn();
       netService.setGameState(gamestate);
@@ -428,7 +430,15 @@ function passAndAdvanceTurn() {
     gamestate.contract.push({name:gamestate.curPlayerName, pass:true, text: "PASS"});
     if (gamestate.contract.length >= 4) {
       var passcount = 0,
-        fourthLastBid = gamestate.contract[gamestate.contract.length-4];
+        lastRealBid = gamestate.contract[gamestate.contract.length-1],
+        nonbidCount = 1;
+      while(lastRealBid && (lastRealBid.pass || lastRealBid.dbl)) {
+        nonbidCount++;
+        if(gamestate.contract.length-nonbidCount <= -1) {
+          break;
+        }
+        lastRealBid = gamestate.contract[gamestate.contract.length-nonbidCount];
+      }
       for(var i=gamestate.contract.length-1;i>gamestate.contract.length-4;i--) {
         if (gamestate.contract[i].pass) {
           passcount++;
@@ -438,8 +448,8 @@ function passAndAdvanceTurn() {
       }
       if (passcount>=3) {
         gamestate.playStage = 1;
-        gamestate.activeContract = fourthLastBid;
-        gamestate.curPlayerName = gamestate.players[getNextPlayerInd(fourthLastBid.name)].name;
+        gamestate.activeContract = lastRealBid;
+        gamestate.curPlayerName = gamestate.players[getNextPlayerInd(lastRealBid.name)].name;
         gamestate.players[getNextPlayerInd(gamestate.curPlayerName)].board = true;
         gamestate.roundPlayerStart = getPlayerIndByName(gamestate.curPlayerName);
         dontAdvance = true;
@@ -484,6 +494,7 @@ function redeal() {
   gamestate.playStage=0;
   gamestate.contract = [];
   gamestate.center = {};
+  gamestate.boardIsVisible = false;
   gamestate.firstBid = (gamestate.firstBid + 1)%4;
   makeGameState();
 }
@@ -510,29 +521,14 @@ function makeCard(card, parent, left, top, visible) {
     }
     return carddom;
 }
-function resetClueData() {
-    var playerInd = gamestate.players.indexOf(gamestate.players.filter(p => p.name == clueData.name)[0]);
-    clueData = deepClone(gamestate.players[playerInd]);
-}
-function clueColor(color) {
-    resetClueData();
-    var matchingCards = clueData.cards.filter(c => c.color == color);
-    for (var card of matchingCards) {
-        card.clueColor = color;
-    }
-    myPlayer.cluedNumber = "";
-    myPlayer.cluedColor = color;
-    drawClueCards();
-}
-function clueNumber(number) {
-    resetClueData();
-    var matchingCards = clueData.cards.filter(c => c.num == number);
-    for (var card of matchingCards) {
-        card.clueNumber = number;
-    }
-    myPlayer.cluedColor = "";
-    myPlayer.cluedNumber = number;
-    drawClueCards();
+function undo() {
+  var curPlayerId = getPlayerIndByName(gamestate.curPlayerName);
+  var prevPlayerId = curPlayerId == 0 ? 3 : curPlayerId - 1;
+  gamestate.curPlayerName = gamestate.players[prevPlayerId].name;
+  gamestate.players[prevPlayerId].cards.push(gamestate.center[prevPlayerId]);
+  gamestate.center[prevPlayerId] = null;
+  gamestate.log.splice(gamestate.log.length-1, 1);
+  drawGameState();
 }
 window.setupModal = function (id) {
     var modal = document.getElementById(id);
