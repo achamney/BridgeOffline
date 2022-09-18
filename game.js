@@ -9,12 +9,15 @@ var gamestate = {
     curPlayerName: "",
     contract: [],
     playStage:0,
+    dontPlayYet:true,
     firstBid:0
 }, myPlayer;
 var suitToIcon={1:"<img src='clubs.png' class='suit'/>",0:"<img src='diamonds.png' class='suit'/>",2:"<img src='hearts.png' class='suit'/>", 3:"<img src='spades.png' class='suit'/>", 4:"NT"};
 var suitToColor={1:"black",0:"red",2:"red", 3:"black"};
+var suitToLetter={1:"C",0:"D",2:"H",3:"S"};
 var valueToCardNum={2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,10:10,11:"J",12:"Q",13:"K",14:"A"};
 var suitToPoints={1:20,0:20,2:30,3:30,4:30};
+var prevCardPositions = {};
 
 window.onload = function () {
     $("#newName").keyup(function (event) {
@@ -117,6 +120,7 @@ function drawGameState() {
       && gamestate.playStage==1;
     get("playerButtons").style['display']=canPlayCards?"block":"none";
     get("aiRunButton").style['display']=gamestate.players[0].name==myPlayer.name?"block":"none";
+    savePrevCardPositions();
     main.innerHTML = "";
 
     var center = makesq("div", main, "block centerboard", "160px", "120px", "590px", "340px");
@@ -125,23 +129,25 @@ function drawGameState() {
         makeCard(card, center, i * 0.5 + 450, (i * -1) + 120, false);
     }
     myPlayer.cardDoms = [];
-    var translatePos = [{ x: "250px", y: "500px", rot: 0 },
-    { x: "-150px", y: "200px", rot: "90deg" },
-    { x: "250px", y: 0, rot: "0" },
-    { x: "600px", y: "200px", rot: "90deg" }];
+    var translatePos = [{ x: "250px", y: "500px", rot: 0, cx:250, cy:500,xm:1,ym:0 },
+    { x: "-150px", y: "200px", rot: "90deg", cx:50, cy:0,xm:0,ym:1 },
+    { x: "250px", y: 0, rot: "0", cx:250, cy:0,xm:1,ym:0 },
+    { x: "600px", y: "200px", rot: "90deg", cx:800, cy:0,xm:0,ym:1 }];
     var startInd = gamestate.players.indexOf(gamestate.players.filter(p => p.name == myPlayer.name)[0]);
     for (var i = 0; i < gamestate.players.length; i++) {
+        var transPos = translatePos[i];
         var player = gamestate.players[startInd];
         var playerBoard = makesq("div", main, "block playerboard board"+player.name, 0, 0, "480px", "120px");
         if (player.name == gamestate.curPlayerName) {
             playerBoard.style["background-color"] = "#FFA";
         }
         make("span", playerBoard, "playerName").innerHTML = player.name;
-        playerBoard.style.transform = `translate(${translatePos[i].x},${translatePos[i].y}) rotate(${translatePos[i].rot})`
+        playerBoard.style.transform = `translate(${transPos.x},${transPos.y}) rotate(${transPos.rot})`
 
         for (var j = 0; j < player.cards.length; j++) {
             var pcard = player.cards[j];
-            var pcarddom = makeCard(pcard, playerBoard,j*30, 0, player.name == myPlayer.name || (player.board && gamestate.boardIsVisible));
+            var pcarddom = makeCard(pcard, main,transPos.cx+j*30*transPos.xm, translatePos[i].cy+j*30*transPos.ym, player.name == myPlayer.name || (player.board && gamestate.boardIsVisible));
+            pcarddom.style.transform = `rotate(${translatePos[i].rot})`;
             if (canPlayCards && (player.name == myPlayer.name || player.board)) {
               pcarddom.style['background-color'] = validCard(pcard, player.cards)? "white" : "#AAA";
             }
@@ -171,6 +177,15 @@ function drawGameState() {
     if (gamestate.playStage == 0) {
       drawContract(main);
     }
+}
+function savePrevCardPositions() {
+  /*for (var i=2;i<=14;i++) {
+    for (var j=0;j<4;j++) {
+      var id=suitToLetter[j]+valueToCardNum[i];
+      var dom = $("#"+id);
+      prevCardPositions[id] = {left: dom.left()}
+    }
+  }*/
 }
 function validCard(card, otherCards) {
   var isValid = true;
@@ -333,12 +348,14 @@ function openContract() {
     drawContractState(contractModal);
 }
 function playCard() {
-    var carddom = $(".board"+gamestate.curPlayerName+" .playcard.selected")[0];
+    var carddom = $( ".playcard.selected")[0];
     if (!carddom ) {
         return;
     }
     var gsPlayer = gamestate.players.filter(p => p.name == gamestate.curPlayerName)[0];
-    playThisCard(carddom.card, gsPlayer);
+    if (~gsPlayer.cards.indexOf(carddom.card)) {
+      playThisCard(carddom.card, gsPlayer);
+    }
 }
 function playThisCard(card,gsPlayer) {
   var playerInd = gamestate.players.indexOf(gsPlayer);
@@ -368,14 +385,20 @@ function playThisCard(card,gsPlayer) {
       }
     }, gamestate.roundPlayerStart)
     if (allplayed == 4) {
-      foreachCenter((cnHandler,i)=>gamestate.discards.push(cnHandler.card));
-      gamestate.players[winningPlayer].tricks++;
-      gamestate.curPlayerName = gamestate.players[winningPlayer].name;
-      gamestate.roundPlayerStart = getPlayerIndByName(gamestate.curPlayerName);
-      gamestate.center = {};
-      var teamPoints = getTeamPointsByPlayerId(winningPlayer);
-      gamestate.log.push(`${gamestate.curPlayerName} wins the trick. TP (${teamPoints})`);
-      isEndGame();
+      gamestate.dontPlayYet = true;
+        window.setTimeout(function(){
+          gamestate.dontPlayYet = false;
+          foreachCenter((cnHandler,i)=>gamestate.discards.push(cnHandler.card));
+          gamestate.players[winningPlayer].tricks++;
+          gamestate.curPlayerName = gamestate.players[winningPlayer].name;
+          gamestate.roundPlayerStart = getPlayerIndByName(gamestate.curPlayerName);
+          gamestate.center = {};
+          var teamPoints = getTeamPointsByPlayerId(winningPlayer);
+          gamestate.log.push(`${gamestate.curPlayerName} wins the trick. TP (${teamPoints})`);
+          netService.setGameState(gamestate);
+          drawGameState();
+          isEndGame();
+        },1000);
     } else {
       advanceTurn();
     }
@@ -448,8 +471,8 @@ function passAndAdvanceTurn() {
       }
       if (passcount>=3) {
         gamestate.playStage = 1;
-        gamestate.activeContract = lastRealBid;
-        gamestate.curPlayerName = gamestate.players[getNextPlayerInd(lastRealBid.name)].name;
+        gamestate.activeContract = findFirstToBidThisSuit(lastRealBid.suit);
+        gamestate.curPlayerName = gamestate.players[getNextPlayerInd(gamestate.activeContract.name)].name;
         gamestate.players[getNextPlayerInd(gamestate.curPlayerName)].board = true;
         gamestate.roundPlayerStart = getPlayerIndByName(gamestate.curPlayerName);
         dontAdvance = true;
@@ -462,6 +485,14 @@ function passAndAdvanceTurn() {
       netService.setGameState(gamestate);
       drawGameState();
     },1);
+}
+function findFirstToBidThisSuit(suit) {
+  for(var i=0;i<gamestate.contract.length; i++) {
+    var contract = gamestate.contract[i];
+    if (contract.suit == suit) {
+      return contract;
+    }
+  }
 }
 function getPlayerIndByName(name) {
   return gamestate.players.indexOf(gamestate.players.filter(p=>p.name == name)[0]);
@@ -496,11 +527,27 @@ function redeal() {
   gamestate.center = {};
   gamestate.boardIsVisible = false;
   gamestate.firstBid = (gamestate.firstBid + 1)%4;
+  gamestate.dontPlayYet = false;
   makeGameState();
 }
 function makeCard(card, parent, left, top, visible) {
     var carddom = make("div", parent, "block playcard");
-    carddom.style.transform = `translate(${left}px,${top}px)`;
+    carddom.id=suitToLetter[card.suit]+""+valueToCardNum[card.value];
+    if (prevCardPositions[carddom.id]) {
+      carddom.style.left = `${prevCardPositions[carddom.id].left}px`;
+      carddom.style.top = `${prevCardPositions[carddom.id].top}px`;
+    }
+    else {
+      carddom.style.left = `0px`;
+      carddom.style.top = `0px`;
+    }
+    window.setTimeout(()=>{
+      carddom.style.left = `${left}px`;
+      carddom.style.top = `${top}px`;
+      prevCardPositions[carddom.id] = {};
+      prevCardPositions[carddom.id].left = left;
+      prevCardPositions[carddom.id].top = top;
+    },1)
     if (visible) {
         var cardLabel = suitToIcon[card.suit]+valueToCardNum[card.value];
         carddom.style.border = "3px solid " + suitToColor[card.suit];
@@ -525,8 +572,12 @@ function undo() {
   var curPlayerId = getPlayerIndByName(gamestate.curPlayerName);
   var prevPlayerId = curPlayerId == 0 ? 3 : curPlayerId - 1;
   gamestate.curPlayerName = gamestate.players[prevPlayerId].name;
-  gamestate.players[prevPlayerId].cards.push(gamestate.center[prevPlayerId]);
-  gamestate.center[prevPlayerId] = null;
+  if (gamestate.playStage == 0) {
+    gamestate.contract.splice(gamestate.contract.length -1, 1);
+  } else if (gamestate.playStage == 1) {
+    gamestate.players[prevPlayerId].cards.push(gamestate.center[prevPlayerId]);
+    gamestate.center[prevPlayerId] = null;
+  }
   gamestate.log.splice(gamestate.log.length-1, 1);
   drawGameState();
 }

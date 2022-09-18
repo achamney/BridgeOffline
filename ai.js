@@ -3,7 +3,7 @@ var suitToGamePoints = {0: 28, 1: 28, 2: 25, 3: 25, 4: 25};
 var suitToGameBid = {0: 4, 1: 4, 2: 3, 3: 3, 4: 2};
 function runAI() {
   var gsPlayer = gamestate.players.filter(p => p.name == gamestate.curPlayerName)[0];
-  if (gsPlayer.cards.length < gamestate.players[0].cards.length || isEndGame()) {
+  if (gsPlayer.cards.length < gamestate.players[0].cards.length || isEndGame() || gamestate.dontPlayYet) {
     return; // Sometimes AI tries to play twice for some reason
   }
   if (gamestate.playStage == 0){
@@ -170,6 +170,9 @@ function guessPartnerScore(myId, partnerId) {
           } else if ( i<=3 && c.suit == CLUBS) {
             score = 22; // Opening of two clubs
           }
+          else if (c.suit == NOTRUMP) {
+            score = 22; // Opening of two clubs
+          }
           score = Math.max(score, 8);
         }
     } else if (c.player == myId) {
@@ -203,8 +206,10 @@ function staymanStepTwo(gsPlayer, derefSuitSize) {
   else if (derefSuitSize[SPADES]>=4) {
     suit = SPADES;
   }
-  else if (derefSuitSize[SPADES]>=4) {
+  else if (derefSuitSize[DIAMONDS]>=4) {
     suit = DIAMONDS;
+  } else {
+    suit = NOTRUMP;
   }
   window.bid = {suit: suit, val: 1, dbl: false, player: getPlayerIndByName(gamestate.curPlayerName),
     text: suitToIcon[suit]+2, name: gamestate.curPlayerName};
