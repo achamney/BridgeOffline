@@ -9,7 +9,7 @@ function runAI() {
   if (gamestate.playStage == 0){
     bidAI(gsPlayer);
   }
-  else {
+  else if(gamestate.playStage == 1){
     playCardAI(gsPlayer);
   }
 }
@@ -125,7 +125,7 @@ function bidAI(gsPlayer) {
         completeJacobyTransfer(partnerBid);
       }
   }
-  else if (partnerBid && partnerBid.dbl && gamestate.contract.length <=6) { // Takeout double response
+  else if (partnerBid && partnerBid.dbl && gamestate.contract.length <=6 && getLastRealBid().val < 2) { // Takeout double response
       completeTakeoutDouble(derefSuitSize, clubs,diamonds,hearts,spades);
   }
   else if (score > 5 && partnerBid) {
@@ -221,6 +221,11 @@ function staymanStepTwo(gsPlayer, derefSuitSize) {
 }
 function completeTakeoutDouble(derefSuitSize,clubs,diamonds,hearts,spades) {
   var oppoBid = getNthLatestBid(3);
+  for(var i=0;i<3;i++) {
+    if (!oppoBid) {
+      oppoBid = getNthLatestBid(4+i);
+    }
+  }
   var suitsByLength = [];
   var val=0;
   var scoreDeref = {0:getScore(diamonds),1:getScore(clubs),2:getScore(hearts),3:getScore(spades)}

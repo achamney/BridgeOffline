@@ -9,7 +9,7 @@ var gamestate = {
     curPlayerName: "",
     contract: [],
     playStage:0,
-    dontPlayYet:true,
+    dontPlayYet:false,
     firstBid:0
 }, myPlayer;
 var suitToIcon={1:"<img src='clubs.png' class='suit'/>",0:"<img src='diamonds.png' class='suit'/>",2:"<img src='hearts.png' class='suit'/>", 3:"<img src='spades.png' class='suit'/>", 4:"NT"};
@@ -81,18 +81,24 @@ function makeGameState() {
       gamestate.players.push({ cards: [], name: "AI"+(i+1), ai: true, tricks: 0 });
     }
     gamestate.curPlayerName = gamestate.players[gamestate.firstBid].name;
-    var numCardsToDraw = 13;
+    var numCardsToDraw = 13,
+      plid = 0;
     for (var player of gamestate.players) {
       for (var i = 0; i < numCardsToDraw; i++) {
         var card = gamestate.deck.pop();
+        card.playerId = plid;
         player.cards.push(card);
       }
-      player.cards.sort((a, b)=>(b.suit*13+b.value)-(a.suit*13+a.value));
+      sortPlayerCards(player);
+      plid++;
     }
     netService.setGameState(gamestate);
     drawGameState();
 
     watchGameState();
+}
+function sortPlayerCards(player) {
+  player.cards.sort((a, b)=>(b.suit*13+b.value)-(a.suit*13+a.value));
 }
 function watchGameState() {
     window.watchInterval = window.watchInterval || window.setInterval(async function () {
@@ -146,8 +152,8 @@ function drawGameState() {
 
         for (var j = 0; j < player.cards.length; j++) {
             var pcard = player.cards[j];
-            var pcarddom = makeCard(pcard, main,transPos.cx+j*30*transPos.xm, translatePos[i].cy+j*30*transPos.ym, player.name == myPlayer.name || (player.board && gamestate.boardIsVisible));
-            pcarddom.style.transform = `rotate(${translatePos[i].rot})`;
+            var pcarddom = makeCard(pcard, main,transPos.cx+j*30*transPos.xm, translatePos[i].cy+j*30*transPos.ym,
+              player.name == myPlayer.name || (player.board && gamestate.boardIsVisible) || gamestate.playStage == 2, transPos.rot);
             if (canPlayCards && (player.name == myPlayer.name || player.board)) {
               pcarddom.style['background-color'] = validCard(pcard, player.cards)? "white" : "#AAA";
             }
@@ -162,7 +168,7 @@ function drawGameState() {
         var centerOffset = [{l:0,t:50},{l:-100,t:0},{l:0,t:-50},{l:100,t:0}];
         var centerCard = gamestate.center[startInd];
         if (centerCard) {
-          makeCard(centerCard, main, centerOffset[i].l + 400,centerOffset[i].t+ 230, true);
+          makeCard(centerCard, main, centerOffset[i].l + 400,centerOffset[i].t+ 230, true, "0deg");
         }
         startInd++;
         if (startInd == gamestate.players.length) {
@@ -231,7 +237,7 @@ function drawContractState(main) {
 function isEndGame(){
   var cards = [];
   gamestate.players.forEach(p=>cards = cards.concat(p.cards));
-  if (cards.length == 0) {
+  if (cards.length == 0 || gamestate.playStage == 2) {
     var teamPoints = getTeamPointsByPlayerId(gamestate.activeContract.player);
     var pointsToWin = gamestate.activeContract.val + 7;
     var gamePoints = (isGameContract() && teamPoints>=pointsToWin)?300:0;
@@ -240,10 +246,20 @@ function isEndGame(){
     } else {
       gamePoints += 50*(teamPoints-pointsToWin)*(hasDouble()?2:1);
     }
-    get("endModal").style.display = "block";
+    if (!window.closetimeoutendModal) {
+      get("endModal").style.display = "block";
+    }
     get("endmodalsummary").innerHTML =`Contract: ${gamestate.activeContract.text}<br/>
       Was contract successful: ${teamPoints>=pointsToWin?"Yes" : "No"}<br/>
       Points awarded to ${gamestate.activeContract.name}: ${gamePoints}`;
+    for (var i=gamestate.discards.length-1;i>=0;i--) {
+      var card = gamestate.discards[i];
+      gamestate.players[card.playerId].cards.push(card);
+      gamestate.discards.splice(i, 1);
+      sortPlayerCards(gamestate.players[card.playerId]);
+    }
+    gamestate.playStage = 2;
+    drawGameState();
     return true;
   } else {
     get("endModal").style.display = "none";
@@ -453,15 +469,8 @@ function passAndAdvanceTurn() {
     gamestate.contract.push({name:gamestate.curPlayerName, pass:true, text: "PASS"});
     if (gamestate.contract.length >= 4) {
       var passcount = 0,
-        lastRealBid = gamestate.contract[gamestate.contract.length-1],
-        nonbidCount = 1;
-      while(lastRealBid && (lastRealBid.pass || lastRealBid.dbl)) {
-        nonbidCount++;
-        if(gamestate.contract.length-nonbidCount <= -1) {
-          break;
-        }
-        lastRealBid = gamestate.contract[gamestate.contract.length-nonbidCount];
-      }
+        lastRealBid = getLastRealBid();
+
       for(var i=gamestate.contract.length-1;i>gamestate.contract.length-4;i--) {
         if (gamestate.contract[i].pass) {
           passcount++;
@@ -470,8 +479,11 @@ function passAndAdvanceTurn() {
         }
       }
       if (passcount>=3) {
+        var firstToBidSuit = findFirstToBidThisSuit(lastRealBid.suit, lastRealBid.player);
         gamestate.playStage = 1;
-        gamestate.activeContract = findFirstToBidThisSuit(lastRealBid.suit);
+        gamestate.activeContract = firstToBidSuit;
+        firstToBidSuit.val = lastRealBid.val;
+        firstToBidSuit.text = lastRealBid.text;
         gamestate.curPlayerName = gamestate.players[getNextPlayerInd(gamestate.activeContract.name)].name;
         gamestate.players[getNextPlayerInd(gamestate.curPlayerName)].board = true;
         gamestate.roundPlayerStart = getPlayerIndByName(gamestate.curPlayerName);
@@ -486,10 +498,23 @@ function passAndAdvanceTurn() {
       drawGameState();
     },1);
 }
-function findFirstToBidThisSuit(suit) {
+function getLastRealBid() {
+  var nonbidCount = 1,
+    lastRealBid = gamestate.contract[gamestate.contract.length-nonbidCount];
+  while(lastRealBid && (lastRealBid.pass || lastRealBid.dbl)) {
+    nonbidCount++;
+    if(gamestate.contract.length-nonbidCount <= -1) {
+      break;
+    }
+    lastRealBid = gamestate.contract[gamestate.contract.length-nonbidCount];
+  }
+  return lastRealBid;
+}
+function findFirstToBidThisSuit(suit, plid) {
+  var oppoId = (plid+2)%4;
   for(var i=0;i<gamestate.contract.length; i++) {
     var contract = gamestate.contract[i];
-    if (contract.suit == suit) {
+    if (contract.suit == suit && (contract.player == plid || contract.player == oppoId)) {
       return contract;
     }
   }
@@ -530,43 +555,52 @@ function redeal() {
   gamestate.dontPlayYet = false;
   makeGameState();
 }
-function makeCard(card, parent, left, top, visible) {
+function makeCard(card, parent, left, top, visible, rotateZ) {
     var carddom = make("div", parent, "block playcard");
     carddom.id=suitToLetter[card.suit]+""+valueToCardNum[card.value];
     if (prevCardPositions[carddom.id]) {
-      carddom.style.left = `${prevCardPositions[carddom.id].left}px`;
-      carddom.style.top = `${prevCardPositions[carddom.id].top}px`;
+      var prevPos = prevCardPositions[carddom.id];
+      carddom.style.left = `${prevPos.left}px`;
+      carddom.style.top = `${prevPos.top}px`;
+      carddom.style.transform = `rotateZ(${prevPos.rotZ}) rotateY(${prevPos.rotY}deg)`;
     }
     else {
       carddom.style.left = `0px`;
       carddom.style.top = `0px`;
     }
     window.setTimeout(()=>{
+      var prevPos = {},
+          rotateY = prevCardPositions[carddom.id] && prevCardPositions[carddom.id].rotY;
+      if ((!rotateY || rotateY == 180) && visible) {
+        rotateY = 0;
+        window.setTimeout(()=>makeCardInside(card,carddom),250);
+      } else {
+        rotateY = 180;
+      }
+      prevCardPositions[carddom.id] = prevPos;
+      prevPos.left = left;
+      prevPos.top = top;
+      prevPos.rotZ = rotateZ;
+      prevPos.rotY = rotateY;
       carddom.style.left = `${left}px`;
       carddom.style.top = `${top}px`;
-      prevCardPositions[carddom.id] = {};
-      prevCardPositions[carddom.id].left = left;
-      prevCardPositions[carddom.id].top = top;
+      carddom.style.transform = `rotateZ(${prevPos.rotZ}) rotateY(${prevPos.rotY}deg)`;
     },1)
-    if (visible) {
-        var cardLabel = suitToIcon[card.suit]+valueToCardNum[card.value];
-        carddom.style.border = "3px solid " + suitToColor[card.suit];
-        carddom.style.color = suitToColor[card.suit];
-        carddom.innerHTML = cardLabel;
-        var upNum = make("div", carddom, "upnumber");
-        upNum.innerHTML = cardLabel;
+    if (visible && (!prevPos || prevPos.rotY == 0)) {
+        makeCardInside(card, carddom);
     } else {
-        var col = card.clueColor ? card.clueColor : "#999";
-        carddom.style.color = col;
-        carddom.style.border = "3px solid " + col;
-        if (card.clueNumber) {
-            carddom.innerHTML = card.clueNumber;
-            var upNum = make("div", carddom, "upnumber");
-            upNum.innerHTML = card.clueNumber;
-        }
-
+        carddom.style.color = "#999";
+        carddom.style.border = "3px solid #999";
     }
     return carddom;
+}
+function makeCardInside(card, carddom) {
+  var cardLabel = suitToIcon[card.suit]+valueToCardNum[card.value];
+  carddom.style.border = "3px solid " + suitToColor[card.suit];
+  carddom.style.color = suitToColor[card.suit];
+  carddom.innerHTML = cardLabel;
+  var upNum = make("div", carddom, "upnumber");
+  upNum.innerHTML = cardLabel;
 }
 function undo() {
   var curPlayerId = getPlayerIndByName(gamestate.curPlayerName);
@@ -587,11 +621,15 @@ window.setupModal = function (id) {
     var span = $(modal).find(".close")[0];
     // When the user clicks on <span> (x), close the modal
     span.onclick = function () {
+        window["closetimeout"+id] = true;
+        window.setTimeout(()=>window["closetimeout"+id] = false, 20000);
         modal.style.display = "none";
     }
     // When the user clicks anywhere outside of the modal, close it
     document.addEventListener("click", function (event) {
         if (event.target == modal) {
+            window["closetimeout"+id] = true;
+            window.setTimeout(()=>window["closetimeout"+id] = false, 20000);
             modal.style.display = "none";
         }
     });
