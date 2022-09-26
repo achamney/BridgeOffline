@@ -10,7 +10,8 @@ var gamestate = {
     contract: [],
     playStage:0,
     dontPlayYet:false,
-    firstBid:0
+    firstBid:0,
+    _id: "bridgedata"
 }, myPlayer;
 var suitToIcon={1:"<img src='clubs.png' class='suit'/>",0:"<img src='diamonds.png' class='suit'/>",2:"<img src='hearts.png' class='suit'/>", 3:"<img src='spades.png' class='suit'/>", 4:"NT"};
 var suitToColor={1:"black",0:"red",2:"red", 3:"black"};
@@ -220,7 +221,6 @@ function drawContract(main) {
   }
   var dbl = makeContractButton(contractButtons,10,10);
   dbl.innerHTML = "DBL";
-  dbl.onclick = doubleAndAdvanceTurn;
 
 }
 function drawContractState(main) {
@@ -296,7 +296,7 @@ function makeContractButton(contractButtons,i,j) {
     btn.onclick = function(){
       $(".contractbuttons .btn").removeClass("selected");
       btn.classList.add("selected");
-      window.bid = {suit: j, val: i, dbl: i==10, player: getPlayerIndByName(gamestate.curPlayerName),
+      window.bid = {suit: j, val: i == 10?0 : i, dbl: i==10, player: getPlayerIndByName(gamestate.curPlayerName),
         text: i==10?"DBL":suitToIcon[j]+(i+1), name: gamestate.curPlayerName};
     }
   } else {
@@ -448,15 +448,6 @@ function foreachCenter(fn, order) {
 function bidAndAdvanceTurn() {
     gamestate.log.push(`${gamestate.curPlayerName} Bid ${bid.text}`);
     gamestate.contract.push(bid);
-    window.setTimeout(function(){
-      advanceTurn();
-      netService.setGameState(gamestate);
-      drawGameState();
-    },1);
-}
-function doubleAndAdvanceTurn() {
-    gamestate.log.push(`${gamestate.curPlayerName} Doubled`);
-    gamestate.contract.push({name: gamestate.curPlayerName, dbl: true, text: "Double"});
     window.setTimeout(function(){
       advanceTurn();
       netService.setGameState(gamestate);
